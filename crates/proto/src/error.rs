@@ -71,6 +71,8 @@ pub enum TransportLayerError {
     IOError(#[from] Arc<IOError>),
     #[error("Raknet UDP Error: {0}")]
     RaknetUDPError(#[from] RaknetError),
+    #[error("UDP Error: {0}")]
+    UDPError(#[from] UdpError),
 }
 
 #[derive(Error, Debug, Clone)]
@@ -81,6 +83,14 @@ pub enum RaknetError {
     SendError(SendQueueError),
     #[error("Server Error: {0}")]
     ServerError(#[from] ServerError),
+    #[error("Format Error: {0}")]
+    FormatError(String),
+}
+
+#[derive(Error, Debug, Clone)]
+pub enum UdpError {
+    #[error("Error while Receive: {0}")]
+    RecvError(#[from] RecvError),
     #[error("Format Error: {0}")]
     FormatError(String),
 }

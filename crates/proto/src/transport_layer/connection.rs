@@ -3,7 +3,7 @@ use std::sync::Arc;
 
 use bedrockrs_core::int::LE;
 
-use crate::error::{RaknetError, TransportLayerError};
+use crate::error::{RaknetError, TransportLayerError, UdpError};
 use crate::info::RAKNET_GAME_PACKET_ID;
 
 pub enum TransportLayerConnection {
@@ -11,8 +11,8 @@ pub enum TransportLayerConnection {
     // TODO RaknetTCP(...),
     NetherNet(/* TODO */),
     // TODO Quic(s2n_quic::connection::Connection),
-    // TODO Tcp(net::TcpStream),
-    // TODO Udp(net::UdpSocket)
+    // Tcp(std::net::TcpStream),
+    Udp(tokio::net::UdpSocket) //MCBE over UDP :sobb:??
 }
 
 impl TransportLayerConnection {
@@ -32,6 +32,22 @@ impl TransportLayerConnection {
                 conn.send(final_stream.as_slice(), true)
                     .await
                     .map_err(|e| TransportLayerError::RaknetUDPError(RaknetError::SendError(e)))
+            }
+            TransportLayerConnection::Udp(conn) => {
+                //BIO 
+                let mut final_stream = vec![];
+
+                LE::<u8>::write(&LE::new(RAKNET_GAME_PACKET_ID), &mut final_stream)
+                    .map_err(|e| TransportLayerError::IOError(Arc::new(e)))?;
+
+                final_stream
+                    .write_all(stream.get_ref())
+                    .map_err(|e| TransportLayerError::IOError(Arc::new(e)))?;
+                
+                conn.send(final_stream.as_slice()) 
+                    .await
+                    .map(|_| ())
+                    .map_err(|e| TransportLayerError::IOError(Arc::new(e))) //udp send error is std::io::Error
             }
             _ => {
                 todo!()
@@ -69,6 +85,39 @@ impl TransportLayerConnection {
                     .map_err(|e| TransportLayerError::IOError(Arc::new(e)))?)
             }
 
+            TransportLayerConnection::Udp(conn) => {
+                // TODO: Configure the socket for non-blocking (NIO) mode to improve efficiency and responsiveness.
+                // Non-blocking I/O allows the program to perform other tasks while waiting for I/O operations to complete,
+                // thereby avoiding potential bottlenecks and enhancing overall performance in high-concurrency scenarios.
+                let mut recv_buffer: Vec<u8> = vec![0; 4096]; 
+                let _amt = conn
+                    .recv(&mut recv_buffer)
+                    .await
+                    .map(|_| ())
+                    .map_err(|e| TransportLayerError::IOError(Arc::new(e)))?;
+                
+                let mut recv_buffer = Cursor::new(recv_buffer.as_slice());
+
+                match LE::<u8>::read(&mut recv_buffer)
+                .map_err(|e| TransportLayerError::IOError(Arc::new(e)))?
+                .into_inner()
+                {
+                    RAKNET_GAME_PACKET_ID => {}
+                    other => {
+                        return Err(TransportLayerError::UDPError(
+                            UdpError::FormatError(format!(
+                                "Expected RakNet Game Packet ID ({:?}), got: {:?}",
+                                RAKNET_GAME_PACKET_ID, other
+                            )),
+                        ));
+                    }
+                };
+
+                Ok(stream
+                    .write_all(recv_buffer.into_inner())
+                    .map_err(|e| TransportLayerError::IOError(Arc::new(e)))?)
+            }
+
             _ => {
                 todo!()
             }
@@ -79,6 +128,9 @@ impl TransportLayerConnection {
         match self {
             TransportLayerConnection::RaknetUDP(conn) => {
                 conn.close().await;
+            }
+            TransportLayerConnection::Udp(socket) => {
+                std::mem::drop(socket); //for closing the socket explicitly(...do we need it?)
             }
             _ => {
                 todo!()

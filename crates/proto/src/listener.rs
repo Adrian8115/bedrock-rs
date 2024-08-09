@@ -7,10 +7,10 @@ use rand::RngCore;
 use crate::connection::Connection;
 use crate::error::{ListenerError, RaknetError, TransportLayerError};
 use crate::info::{MINECRAFT_EDITION_MOTD, MINECRAFT_VERSION, PROTOCOL_VERSION};
-use crate::transport_layer::TransportLaterListener;
+use crate::transport_layer::TransportLayerListener;
 
 pub struct Listener {
-    listener: TransportLaterListener,
+    listener: TransportLayerListener,
     name: String,
     sub_name: String,
     player_count_max: u32,
@@ -61,7 +61,7 @@ impl Listener {
         };
 
         Ok(Self {
-            listener: TransportLaterListener::RaknetUDP(rak_listener),
+            listener: TransportLayerListener::RaknetUDP(rak_listener),
             name,
             sub_name,
             player_count_max,
